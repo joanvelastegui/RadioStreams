@@ -1,0 +1,623 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Radio Stream Listener Tracker</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  :root {
+    --bg: #ffffff; --bg2: #f5f5f3; --bg3: #eeedea;
+    --text: #1a1a18; --text2: #5a5a56; --text3: #9a9994;
+    --border: rgba(0,0,0,0.1); --border2: rgba(0,0,0,0.18);
+    --green: #3B6D11; --green-bg: #EAF3DE;
+    --red: #A32D2D; --red-bg: #FCEBEB;
+    --blue: #185FA5; --blue-bg: #E6F1FB;
+    --amber: #854F0B; --amber-bg: #FAEEDA;
+    --radius: 10px; --radius-sm: 6px;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #1c1c1a; --bg2: #242421; --bg3: #2e2e2b;
+      --text: #f0efe8; --text2: #a8a79f; --text3: #6a6962;
+      --border: rgba(255,255,255,0.1); --border2: rgba(255,255,255,0.18);
+      --green: #97C459; --green-bg: #173404;
+      --red: #F09595; --red-bg: #501313;
+      --blue: #85B7EB; --blue-bg: #042C53;
+      --amber: #EF9F27; --amber-bg: #412402;
+    }
+  }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: var(--bg2); color: var(--text); min-height: 100vh; }
+
+  .topbar { background: var(--bg); border-bottom: 0.5px solid var(--border); padding: 0 1.5rem; display: flex; align-items: center; justify-content: space-between; height: 56px; gap: 8px; flex-wrap: wrap; }
+  .topbar-left { display: flex; align-items: center; gap: 10px; }
+  .logo { width: 28px; height: 28px; background: var(--blue-bg); border-radius: 6px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+  .logo svg { width: 16px; height: 16px; stroke: var(--blue); fill: none; stroke-width: 2; stroke-linecap: round; }
+  h1 { font-size: 15px; font-weight: 600; color: var(--text); white-space: nowrap; }
+  .topbar-right { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .pill { font-size: 11px; font-weight: 500; padding: 3px 10px; border-radius: 99px; display: flex; align-items: center; gap: 5px; white-space: nowrap; }
+  .pill-green { background: var(--green-bg); color: var(--green); }
+  .pill-amber { background: var(--amber-bg); color: var(--amber); }
+  .pill-gray { background: var(--bg3); border: 0.5px solid var(--border); color: var(--text3); font-weight: 400; }
+  .dot { width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+  .dot-blink { animation: blink 2s ease-in-out infinite; }
+  @keyframes blink { 0%,100%{opacity:1} 50%{opacity:0.25} }
+  .btn { font-size: 12px; font-weight: 500; padding: 6px 12px; border-radius: var(--radius-sm); border: 0.5px solid var(--border2); background: var(--bg); color: var(--text); cursor: pointer; display: flex; align-items: center; gap: 5px; white-space: nowrap; transition: background 0.15s; }
+  .btn:hover { background: var(--bg3); }
+  .btn svg { transition: transform 0.15s; }
+  .btn.spinning svg { animation: spin 1s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .btn-blue { background: var(--blue-bg); border-color: var(--blue); color: var(--blue); }
+  .btn-blue:hover { opacity: 0.8; background: var(--blue-bg); }
+
+  .proxy-banner { background: var(--amber-bg); border-bottom: 0.5px solid var(--amber); padding: 10px 1.5rem; display: flex; align-items: flex-start; gap: 10px; font-size: 12px; color: var(--amber); }
+  .proxy-banner.hidden { display: none; }
+  .proxy-banner strong { font-weight: 600; }
+  .proxy-banner input { font-size: 12px; padding: 4px 8px; border-radius: var(--radius-sm); border: 0.5px solid var(--amber); background: var(--bg); color: var(--text); width: 320px; margin: 4px 0; display: block; }
+  .proxy-banner button { font-size: 11px; padding: 4px 10px; border-radius: var(--radius-sm); border: 0.5px solid var(--amber); background: var(--amber-bg); color: var(--amber); cursor: pointer; font-weight: 600; margin-top: 4px; }
+
+  .page { max-width: 1100px; margin: 0 auto; padding: 1.5rem; }
+  .summary-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 10px; margin-bottom: 1.5rem; }
+  .metric { background: var(--bg); border: 0.5px solid var(--border); border-radius: var(--radius); padding: 14px 16px; }
+  .metric-label { font-size: 11px; color: var(--text3); text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 6px; }
+  .metric-value { font-size: 22px; font-weight: 600; color: var(--text); line-height: 1.2; }
+  .metric-value.sm { font-size: 13px; font-weight: 400; color: var(--text2); }
+
+  .panel { background: var(--bg); border: 0.5px solid var(--border); border-radius: var(--radius); margin-bottom: 1.25rem; }
+  .panel-header { display: flex; align-items: center; justify-content: space-between; padding: 12px 16px; border-bottom: 0.5px solid var(--border); gap: 10px; flex-wrap: wrap; }
+  .panel-title { font-size: 13px; font-weight: 600; color: var(--text); }
+  .panel-body { padding: 16px; }
+
+  .wbtn-row { display: flex; gap: 4px; }
+  .wbtn { font-size: 12px; padding: 5px 11px; border-radius: var(--radius-sm); border: 0.5px solid var(--border2); background: var(--bg2); color: var(--text2); cursor: pointer; font-weight: 500; transition: background 0.1s; }
+  .wbtn:hover { background: var(--bg3); }
+  .wbtn.active { background: var(--blue-bg); border-color: var(--blue); color: var(--blue); }
+
+  .toggle-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 6px; margin-bottom: 14px; }
+  .tog { display: flex; align-items: center; gap: 7px; padding: 7px 10px; border-radius: var(--radius-sm); border: 0.5px solid var(--border); background: var(--bg2); cursor: pointer; user-select: none; transition: background 0.1s, border-color 0.1s; }
+  .tog.on { background: var(--bg); border-color: var(--border2); }
+  .tog:hover { border-color: var(--border2); }
+  .swatch { width: 10px; height: 10px; border-radius: 2px; flex-shrink: 0; }
+  .tog-name { font-size: 12px; font-weight: 500; color: var(--text); flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .tog-cur { font-size: 11px; color: var(--text3); white-space: nowrap; }
+  .ind { width: 6px; height: 6px; border-radius: 50%; background: var(--text3); flex-shrink: 0; }
+
+  .chart-wrap { position: relative; width: 100%; height: 300px; }
+  .chart-empty { height: 300px; display: flex; align-items: center; justify-content: center; color: var(--text3); font-size: 13px; }
+
+  .cards-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(195px, 1fr)); gap: 10px; }
+  .scard { background: var(--bg); border: 0.5px solid var(--border); border-radius: var(--radius); padding: 12px 14px; }
+  .scard-top { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
+  .scard-name { font-size: 13px; font-weight: 600; color: var(--text); }
+  .badge { font-size: 10px; font-weight: 600; padding: 2px 7px; border-radius: 99px; }
+  .badge-on { background: var(--green-bg); color: var(--green); }
+  .badge-off { background: var(--red-bg); color: var(--red); }
+  .badge-wait { background: var(--bg3); color: var(--text3); }
+  .scard-metrics { display: grid; grid-template-columns: 1fr 1fr; gap: 7px; }
+  .sm { background: var(--bg2); border-radius: var(--radius-sm); padding: 8px 10px; }
+  .sm-lbl { font-size: 10px; color: var(--text3); text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: 3px; }
+  .sm-val { font-size: 18px; font-weight: 600; color: var(--text); }
+  .sm-val.pulsing { font-size: 12px; color: var(--text3); animation: pulse 1.2s ease-in-out infinite; }
+  .sm-val.na { font-size: 12px; color: var(--text3); }
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.3} }
+  .scard-url { font-size: 10px; color: var(--text3); margin-top: 8px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+  .log-scroll { max-height: 260px; overflow-y: auto; }
+  table { width: 100%; border-collapse: collapse; font-size: 12px; }
+  th { text-align: left; font-size: 11px; font-weight: 500; color: var(--text3); text-transform: uppercase; letter-spacing: 0.04em; padding: 0 10px 8px; border-bottom: 0.5px solid var(--border); }
+  td { padding: 7px 10px; border-bottom: 0.5px solid var(--border); color: var(--text2); }
+  tr:last-child td { border-bottom: none; }
+  td:first-child { color: var(--text); font-weight: 500; }
+
+  footer { text-align: center; font-size: 11px; color: var(--text3); padding: 2rem 0 1.5rem; }
+  footer a { color: var(--blue); text-decoration: none; }
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <div class="topbar-left">
+    <div class="logo">
+      <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M6.3 6.3a8 8 0 0 0 0 11.4"/><path d="M17.7 6.3a8 8 0 0 1 0 11.4"/><path d="M3.5 3.5a16 16 0 0 0 0 17"/><path d="M20.5 3.5a16 16 0 0 1 0 17"/></svg>
+    </div>
+    <h1>Radio Stream Tracker</h1>
+  </div>
+  <div class="topbar-right">
+    <span class="pill pill-green" id="status-pill"><span class="dot dot-blink"></span><span id="status-text">Starting…</span></span>
+    <span class="pill pill-gray" id="countdown-pill">Next: —</span>
+    <button class="btn" id="refresh-btn" onclick="fetchAll()">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M23 4v6h-6"/><path d="M1 20v-6h6"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10"/><path d="M20.49 15a9 9 0 0 1-14.85 3.36L1 14"/></svg>
+      Refresh
+    </button>
+    <button class="btn btn-blue" onclick="exportCSV()">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+      Export CSV
+    </button>
+    <button class="btn" onclick="toggleProxyPanel()">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><circle cx="12" cy="12" r="3"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14"/><path d="M4.93 4.93a10 10 0 0 0 0 14.14"/></svg>
+      Proxy
+    </button>
+  </div>
+</div>
+
+<div class="proxy-banner" id="proxy-banner">
+  <div style="flex:1">
+    <strong>Proxy required</strong> — These radio servers block direct browser requests (CORS). You need a small proxy.<br>
+    <span style="opacity:0.85">Option 1: Deploy the Cloudflare Worker below (free, 1 min setup).<br>
+    Option 2: Paste any working CORS proxy URL prefix (must end with <code style="font-size:11px">?url=</code> or <code style="font-size:11px">/</code>).</span>
+    <input type="text" id="proxy-input" placeholder="e.g. https://my-worker.yourname.workers.dev/?url=" />
+    <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
+      <button onclick="saveProxy()">Save &amp; reconnect</button>
+      <button onclick="dismissProxy()" style="font-weight:400;opacity:0.7">Dismiss</button>
+      <span id="proxy-status" style="font-size:11px;margin-left:4px"></span>
+    </div>
+  </div>
+</div>
+
+<div class="page">
+  <div class="summary-row">
+    <div class="metric"><div class="metric-label">Listeners now</div><div class="metric-value" id="sum-cur">—</div></div>
+    <div class="metric"><div class="metric-label">Online</div><div class="metric-value" id="sum-online">—</div></div>
+    <div class="metric"><div class="metric-label">Data points</div><div class="metric-value" id="sum-pts">—</div></div>
+    <div class="metric"><div class="metric-label">Tracking since</div><div class="metric-value sm" id="sum-since">—</div></div>
+    <div class="metric"><div class="metric-label">Last updated</div><div class="metric-value sm" id="sum-updated">Never</div></div>
+  </div>
+
+  <div class="panel">
+    <div class="panel-header">
+      <span class="panel-title">Listener history</span>
+      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+        <div class="wbtn-row">
+          <button class="wbtn active" onclick="setWin(1,this)">1h</button>
+          <button class="wbtn" onclick="setWin(3,this)">3h</button>
+          <button class="wbtn" onclick="setWin(6,this)">6h</button>
+          <button class="wbtn" onclick="setWin(12,this)">12h</button>
+          <button class="wbtn" onclick="setWin(0,this)">All</button>
+        </div>
+      </div>
+    </div>
+    <div class="panel-body">
+      <div class="toggle-grid" id="tog-grid"></div>
+      <div class="chart-wrap" id="chart-wrap">
+        <canvas id="mainChart" role="img" aria-label="Listener count over time for selected radio stations"></canvas>
+      </div>
+    </div>
+  </div>
+
+  <div class="panel">
+    <div class="panel-header"><span class="panel-title">Live cards</span></div>
+    <div class="panel-body"><div class="cards-grid" id="cards-grid"></div></div>
+  </div>
+
+  <div class="panel">
+    <div class="panel-header">
+      <span class="panel-title">Data log</span>
+      <button class="btn" style="font-size:11px;padding:4px 10px" onclick="clearHistory()">Clear all</button>
+    </div>
+    <div class="panel-body" style="padding:0">
+      <div class="log-scroll">
+        <table><thead><tr><th>Time</th><th>Station</th><th>Current</th><th>Peak</th><th>Status</th></tr></thead>
+        <tbody id="log-body"></tbody></table>
+      </div>
+    </div>
+  </div>
+</div>
+
+<footer>
+  Auto-collects every 30 min &bull; Data stored in browser localStorage (24h) &bull;
+  <a href="javascript:void(0)" onclick="showWorkerCode()">View Cloudflare Worker proxy code</a>
+</footer>
+
+<div id="worker-overlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:999;align-items:center;justify-content:center;">
+  <div style="background:var(--bg);border-radius:var(--radius);padding:20px;max-width:560px;width:90%;max-height:80vh;overflow-y:auto;border:0.5px solid var(--border2)">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+      <strong style="font-size:14px">Cloudflare Worker — proxy setup</strong>
+      <button class="btn" style="padding:4px 8px;font-size:11px" onclick="closeWorker()">Close</button>
+    </div>
+    <p style="font-size:12px;color:var(--text2);margin-bottom:10px;line-height:1.6">
+      1. Go to <a href="https://workers.cloudflare.com" target="_blank">workers.cloudflare.com</a> → create a free account → New Worker<br>
+      2. Paste the code below, click <strong>Deploy</strong><br>
+      3. Copy your worker URL (e.g. <code style="font-size:11px">https://radio-proxy.yourname.workers.dev</code>)<br>
+      4. Paste it in the Proxy field above as: <code style="font-size:11px">https://radio-proxy.yourname.workers.dev/?url=</code>
+    </p>
+    <pre id="worker-code" style="font-size:11px;background:var(--bg2);border:0.5px solid var(--border);border-radius:var(--radius-sm);padding:12px;overflow-x:auto;line-height:1.5;white-space:pre-wrap;user-select:all"></pre>
+    <button class="btn btn-blue" style="margin-top:10px;font-size:12px" onclick="copyWorker()">Copy code</button>
+  </div>
+</div>
+
+<script>
+const STATIONS = [
+  { name:"Rumba",       url:"https://radio.kapchosting.com:7052" },
+  { name:"88-5",        url:"https://radio.kapchosting.com:7055" },
+  { name:"Continental", url:"https://radio.kapchosting.com:7056" },
+  { name:"Amor",        url:"https://rr5100.globalhost1.com:8168/statistics" },
+  { name:"Alegria",     url:"https://cloudstream2032.conectarhosting.com:7092/statistics" },
+  { name:"Caracol",     url:"https://cloudstream2032.conectarhosting.com:7291/statistics" },
+  { name:"Xtrema",      url:"https://s1.raudiostream.com:8004/statistics" },
+  { name:"Centro",      url:"https://cloudstream2032.conectarhosting.com:8820/statistics" },
+];
+const COLORS = ["#378ADD","#1D9E75","#D85A30","#7F77DD","#BA7517","#D4537E","#639922","#888780"];
+const STORE_KEY = "radio_tracker_v3";
+const PROXY_KEY = "radio_proxy_url";
+const INTERVAL = 30 * 60 * 1000;
+
+const WORKER_CODE = `export default {
+  async fetch(request) {
+    const url = new URL(request.url);
+    const target = url.searchParams.get("url");
+    if (!target) return new Response("Missing ?url=", { status: 400 });
+
+    const headers = new Headers();
+    headers.set("User-Agent", "Mozilla/5.0 (compatible; RadioTracker/1.0)");
+
+    let resp;
+    try {
+      resp = await fetch(target, { headers, cf: { timeout: 10 } });
+    } catch (e) {
+      return new Response("Fetch failed: " + e.message, {
+        status: 502,
+        headers: { "Access-Control-Allow-Origin": "*" }
+      });
+    }
+
+    const body = await resp.text();
+    return new Response(body, {
+      status: resp.status,
+      headers: {
+        "Content-Type": resp.headers.get("Content-Type") || "text/plain",
+        "Access-Control-Allow-Origin": "*",
+        "Access-Control-Allow-Methods": "GET, OPTIONS",
+      }
+    });
+  }
+};`;
+
+let history = [];
+let active = new Set(STATIONS.map(s => s.name));
+let winHours = 1;
+let chart = null;
+let timer = null;
+let nextFetch = null;
+let live = {};
+STATIONS.forEach(s => { live[s.name] = { current: null, peak: null, online: null }; });
+
+function getProxy() { return localStorage.getItem(PROXY_KEY) || ""; }
+function saveProxy() {
+  const val = document.getElementById("proxy-input").value.trim();
+  if (!val) { document.getElementById("proxy-status").textContent = "Enter a URL first"; return; }
+  localStorage.setItem(PROXY_KEY, val);
+  document.getElementById("proxy-status").textContent = "Saved! Fetching…";
+  setTimeout(() => { document.getElementById("proxy-status").textContent = ""; }, 3000);
+  fetchAll();
+}
+function dismissProxy() { document.getElementById("proxy-banner").classList.add("hidden"); }
+function toggleProxyPanel() {
+  const b = document.getElementById("proxy-banner");
+  b.classList.toggle("hidden");
+  document.getElementById("proxy-input").value = getProxy();
+}
+function showWorkerCode() {
+  document.getElementById("worker-code").textContent = WORKER_CODE;
+  document.getElementById("worker-overlay").style.display = "flex";
+}
+function closeWorker() { document.getElementById("worker-overlay").style.display = "none"; }
+function copyWorker() {
+  navigator.clipboard.writeText(WORKER_CODE).then(() => alert("Worker code copied!"));
+}
+
+function loadHistory() {
+  try { const r = localStorage.getItem(STORE_KEY); if (r) history = JSON.parse(r); } catch { history = []; }
+}
+function saveHistory() {
+  try {
+    const cutoff = Date.now() - 24 * 3600 * 1000;
+    history = history.filter(r => r.ts >= cutoff);
+    localStorage.setItem(STORE_KEY, JSON.stringify(history));
+  } catch {}
+}
+
+function tryParse(text) {
+  if (!text) return null;
+  const pairs = [
+    [/<listeners>(\d+)<\/listeners>/i,               /<listener_peak>(\d+)<\/listener_peak>/i],
+    [/<Listeners>(\d+)<\/Listeners>/i,               /<ListenerPeak>(\d+)<\/ListenerPeak>/i],
+    [/"listeners"\s*:\s*(\d+)/i,                     /"listener_peak"\s*:\s*(\d+)/i],
+    [/<CURRENTLISTENERS>(\d+)<\/CURRENTLISTENERS>/i, /<PEAKLISTENERS>(\d+)<\/PEAKLISTENERS>/i],
+    [/<currentlisteners>(\d+)<\/currentlisteners>/i, /<peaklisteners>(\d+)<\/peaklisteners>/i],
+    [/"currentlisteners"\s*:\s*(\d+)/i,              /"peaklisteners"\s*:\s*(\d+)/i],
+  ];
+  let cur = null, pk = null;
+  for (const [cp, pp] of pairs) {
+    if (cur === null) { const m = text.match(cp); if (m) cur = +m[1]; }
+    if (pk === null)  { const m = text.match(pp); if (m) pk  = +m[1]; }
+  }
+  if (cur !== null || pk !== null) return { current: cur, peak: pk };
+  try {
+    const j = JSON.parse(text.trim());
+    const c = j.listeners ?? j.currentlisteners ?? j.CURRENTLISTENERS ?? j.current_listeners ?? null;
+    const p = j.listener_peak ?? j.peaklisteners ?? j.PEAKLISTENERS ?? j.peak_listeners ?? null;
+    if (c !== null || p !== null) return { current: c !== null ? +c : null, peak: p !== null ? +p : null };
+  } catch {}
+  return null;
+}
+
+async function fetchStation(station) {
+  const proxy = getProxy();
+  const base = station.url.replace(/\/$/, "").replace(/\/statistics$/, "");
+  const eps = station.url.endsWith("/statistics")
+    ? [station.url, base + "/7.html"]
+    : [base + "/status-json.xsl", base + "/statistics", base + "/7.html", base + "/stats"];
+
+  for (const ep of eps) {
+    const targets = proxy ? [proxy + encodeURIComponent(ep)] : [ep];
+    for (const target of targets) {
+      try {
+        const res = await fetch(target, { signal: AbortSignal.timeout(9000) });
+        if (!res.ok) continue;
+        const text = await res.text();
+        if (text.includes("Host not in allowlist") || text.includes("not in allowlist")) continue;
+        const parsed = tryParse(text);
+        if (parsed && (parsed.current !== null || parsed.peak !== null)) return { ...parsed, online: true };
+      } catch {}
+    }
+  }
+  return { current: null, peak: null, online: false };
+}
+
+async function fetchAll() {
+  const btn = document.getElementById("refresh-btn");
+  btn.classList.add("spinning");
+  document.getElementById("status-text").textContent = "Fetching…";
+
+  const ts = Date.now();
+  let anyOnline = false;
+  const results = await Promise.all(STATIONS.map(async s => {
+    const d = await fetchStation(s);
+    live[s.name] = d;
+    if (d.online) anyOnline = true;
+    return { ts, station: s.name, current: d.current, peak: d.peak, online: d.online };
+  }));
+
+  results.forEach(r => history.push(r));
+  saveHistory();
+  updateCards();
+  updateToggles();
+  renderChart();
+  updateSummary();
+  updateLog();
+
+  const now = new Date();
+  document.getElementById("sum-updated").textContent = now.toLocaleTimeString([], { hour:"2-digit", minute:"2-digit" });
+  document.getElementById("status-text").textContent = anyOnline ? "Live" : "Offline";
+
+  const pill = document.getElementById("status-pill");
+  pill.className = "pill " + (anyOnline ? "pill-green" : "pill-amber");
+
+  if (!anyOnline && !getProxy()) {
+    document.getElementById("proxy-banner").classList.remove("hidden");
+    document.getElementById("proxy-input").value = getProxy();
+  }
+
+  btn.classList.remove("spinning");
+  nextFetch = Date.now() + INTERVAL;
+  clearInterval(timer);
+  timer = setInterval(() => {
+    const rem = Math.max(0, nextFetch - Date.now());
+    const m = Math.floor(rem / 60000);
+    const s = Math.floor((rem % 60000) / 1000);
+    document.getElementById("countdown-pill").textContent = `Next: ${m}:${String(s).padStart(2,"0")}`;
+    if (rem === 0) fetchAll();
+  }, 1000);
+}
+
+function updateSummary() {
+  let total = 0, online = 0;
+  STATIONS.forEach(s => {
+    const d = live[s.name];
+    if (d.online) { online++; if (d.current != null) total += d.current; }
+  });
+  document.getElementById("sum-cur").textContent = total.toLocaleString();
+  document.getElementById("sum-online").textContent = `${online} / ${STATIONS.length}`;
+  document.getElementById("sum-pts").textContent = history.length.toLocaleString();
+  if (history.length > 0) {
+    const d = new Date(history[0].ts);
+    document.getElementById("sum-since").textContent = d.toLocaleString([], { month:"short", day:"numeric", hour:"2-digit", minute:"2-digit" });
+  }
+}
+
+function buildCards() {
+  document.getElementById("cards-grid").innerHTML = STATIONS.map(s => `
+    <div class="scard">
+      <div class="scard-top">
+        <span class="scard-name">${s.name}</span>
+        <span class="badge badge-wait" id="sbadge-${s.name}">—</span>
+      </div>
+      <div class="scard-metrics">
+        <div class="sm"><div class="sm-lbl">Current</div><div class="sm-val pulsing" id="scur-${s.name}">…</div></div>
+        <div class="sm"><div class="sm-lbl">Peak</div><div class="sm-val pulsing" id="spk-${s.name}">…</div></div>
+      </div>
+      <div class="scard-url" title="${s.url}">${s.url}</div>
+    </div>`).join("");
+}
+
+function updateCards() {
+  STATIONS.forEach(s => {
+    const d = live[s.name];
+    if (d.online === null) return;
+    const badge = document.getElementById(`sbadge-${s.name}`);
+    badge.className = "badge " + (d.online ? "badge-on" : "badge-off");
+    badge.textContent = d.online ? "Online" : "Offline";
+    const cur = document.getElementById(`scur-${s.name}`);
+    cur.className = "sm-val" + (!d.online ? " na" : "");
+    cur.textContent = d.current != null ? d.current.toLocaleString() : (d.online ? "N/A" : "—");
+    const pk = document.getElementById(`spk-${s.name}`);
+    pk.className = "sm-val" + (!d.online ? " na" : "");
+    pk.textContent = d.peak != null ? d.peak.toLocaleString() : (d.online ? "N/A" : "—");
+  });
+}
+
+function buildToggles() {
+  document.getElementById("tog-grid").innerHTML = STATIONS.map((s, i) => `
+    <div class="tog on" id="tog-${s.name}" onclick="toggleSt('${s.name}')">
+      <span class="swatch" style="background:${COLORS[i]}"></span>
+      <span class="ind" id="ind-${s.name}"></span>
+      <span class="tog-name">${s.name}</span>
+      <span class="tog-cur" id="togcur-${s.name}">—</span>
+    </div>`).join("");
+}
+
+function updateToggles() {
+  STATIONS.forEach(s => {
+    const d = live[s.name];
+    const ind = document.getElementById(`ind-${s.name}`);
+    if (d.online === true) ind.style.background = "var(--green)";
+    else if (d.online === false) ind.style.background = "var(--red)";
+    const cur = document.getElementById(`togcur-${s.name}`);
+    cur.textContent = d.current != null ? d.current.toLocaleString() : "—";
+  });
+}
+
+function toggleSt(name) {
+  const el = document.getElementById(`tog-${name}`);
+  if (active.has(name)) { active.delete(name); el.classList.remove("on"); }
+  else { active.add(name); el.classList.add("on"); }
+  renderChart();
+}
+
+function setWin(h, btn) {
+  winHours = h;
+  document.querySelectorAll(".wbtn").forEach(b => b.classList.remove("active"));
+  btn.classList.add("active");
+  renderChart();
+}
+
+function windowed() {
+  if (winHours === 0) return history;
+  const cutoff = Date.now() - winHours * 3600000;
+  return history.filter(r => r.ts >= cutoff);
+}
+
+function renderChart() {
+  const data = windowed();
+  const wrap = document.getElementById("chart-wrap");
+
+  let empty = document.getElementById("chart-empty");
+  if (data.length === 0) {
+    document.getElementById("mainChart").style.display = "none";
+    if (!empty) {
+      empty = document.createElement("div");
+      empty.id = "chart-empty"; empty.className = "chart-empty";
+      empty.textContent = "No data yet for this window — data appears after the first successful fetch.";
+      wrap.appendChild(empty);
+    }
+    return;
+  }
+  if (empty) empty.remove();
+  document.getElementById("mainChart").style.display = "";
+
+  const allTs = [...new Set(data.map(r => r.ts))].sort((a,b) => a-b);
+  const labels = allTs.map(ts => new Date(ts).toLocaleTimeString([], { hour:"2-digit", minute:"2-digit" }));
+  const datasets = STATIONS.filter(s => active.has(s.name)).map((s, _) => {
+    const idx = STATIONS.indexOf(s);
+    const color = COLORS[idx];
+    const map = {};
+    data.filter(r => r.station === s.name).forEach(r => { map[r.ts] = r.current; });
+    return {
+      label: s.name, data: allTs.map(ts => map[ts] ?? null),
+      borderColor: color, backgroundColor: color + "18",
+      borderWidth: 2, pointRadius: allTs.length > 20 ? 0 : 3,
+      pointHoverRadius: 5, spanGaps: true, tension: 0.35, fill: false,
+    };
+  });
+
+  const dark = window.matchMedia("(prefers-color-scheme: dark)").matches;
+  const grid = dark ? "rgba(255,255,255,0.06)" : "rgba(0,0,0,0.06)";
+  const tick = dark ? "#6a6962" : "#9a9994";
+
+  if (chart) { chart.data.labels = labels; chart.data.datasets = datasets; chart.update(); return; }
+  chart = new Chart(document.getElementById("mainChart"), {
+    type: "line", data: { labels, datasets },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      interaction: { mode: "index", intersect: false },
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          backgroundColor: dark ? "#242421" : "#fff",
+          borderColor: dark ? "rgba(255,255,255,0.15)" : "rgba(0,0,0,0.12)",
+          borderWidth: 1,
+          titleColor: dark ? "#f0efe8" : "#1a1a18",
+          bodyColor: dark ? "#a8a79f" : "#5a5a56",
+          padding: 10,
+        }
+      },
+      scales: {
+        x: { grid: { color: grid }, ticks: { color: tick, maxTicksLimit: 10 } },
+        y: { grid: { color: grid }, ticks: { color: tick, precision: 0 }, beginAtZero: true }
+      }
+    }
+  });
+}
+
+function updateLog() {
+  const body = document.getElementById("log-body");
+  const rows = [...history].reverse().slice(0, 100);
+  if (!rows.length) {
+    body.innerHTML = `<tr><td colspan="5" style="text-align:center;padding:20px;color:var(--text3)">No data yet</td></tr>`;
+    return;
+  }
+  body.innerHTML = rows.map(r => `
+    <tr>
+      <td>${new Date(r.ts).toLocaleString([], { month:"short", day:"numeric", hour:"2-digit", minute:"2-digit" })}</td>
+      <td>${r.station}</td>
+      <td>${r.current != null ? r.current.toLocaleString() : "—"}</td>
+      <td>${r.peak != null ? r.peak.toLocaleString() : "—"}</td>
+      <td><span class="badge ${r.online ? "badge-on" : "badge-off"}">${r.online ? "Online" : "Offline"}</span></td>
+    </tr>`).join("");
+}
+
+function clearHistory() {
+  if (!confirm("Delete all stored history?")) return;
+  history = []; saveHistory(); updateLog(); renderChart(); updateSummary();
+}
+
+function exportCSV() {
+  const rows = windowed();
+  if (!rows.length) { alert("No data in this time window."); return; }
+  const lines = [["Timestamp","Date","Time","Station","Current Listeners","Peak Listeners","Status"].join(",")];
+  rows.forEach(r => {
+    const d = new Date(r.ts);
+    lines.push([
+      r.ts,
+      `"${d.toLocaleDateString()}"`,
+      `"${d.toLocaleTimeString([], { hour:"2-digit", minute:"2-digit", second:"2-digit" })}"`,
+      `"${r.station}"`,
+      r.current ?? "",
+      r.peak ?? "",
+      r.online ? "Online" : "Offline"
+    ].join(","));
+  });
+  const blob = new Blob([lines.join("\n")], { type: "text/csv;charset=utf-8;" });
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = `radio-listeners-${winHours || "all"}h-${new Date().toISOString().slice(0,10)}.csv`;
+  a.click();
+}
+
+const saved = getProxy();
+if (saved) {
+  document.getElementById("proxy-input").value = saved;
+  document.getElementById("proxy-banner").classList.add("hidden");
+}
+
+loadHistory();
+buildCards();
+buildToggles();
+renderChart();
+updateLog();
+updateSummary();
+fetchAll();
+</script>
+</body>
+</html>
